@@ -74,7 +74,7 @@ UserSchema.methods.generateRequestToken = function(){
         _id:this._id,
     },process.env.REFRESH_TOKEN_SECRET,
     {
-        expiresIn:process.env.REFRESH_TOKEN_EXPIRE
+        expiresIn:process.env.REFRESH_TOKEN_EXPIRY
     })
 }
 export const User = mongoose.model("User",UserSchema);

@@ -3,20 +3,20 @@ import { ApiError } from "../utils/ApiError.js"
 import { User } from "../../models/user.models.js";
 import { uploadOnChoudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-
+import jwt from "jsonwebtoken"
 const generateAccessAndRefreshTokens = async(userId)=>{
     try {
-       const user =  await User.findOne(userId);
+       const user =  await User.findById(userId);
        const AcessToken = user.generateAccessToken();
        const RefreshToken = user.generateRequestToken();
 
-       user.refreshToken = AcessToken;
+       user.refreshToken = RefreshToken;
        await  user.save({validateBeforeSave: false});
        
        return {AcessToken , RefreshToken};
 
     } catch (error) {
-        throw new ApiError(500,"Something went wrong while generating redfresh and access Token")
+        throw new ApiError(500,"Something went wrong while generating refresh and access Token")
     }
 }
 const registerUser = asyncHandler(async (req,res) => {
@@ -74,8 +74,8 @@ const loginUser = asyncHandler( async (req,res)=>{
        // access and referesh token
        // send cookie
        const {username,password,email} = req.body;
-       
-       if(!username || !email) throw new ApiError(400,"username and password are requiired");
+
+       if(!username && !email) throw new ApiError(400,"username and password are requiired");
 
        const user =  await  User.findOne({
         $or: [{username} || {email}]
@@ -98,7 +98,7 @@ const loginUser = asyncHandler( async (req,res)=>{
 
        return res.status(200)
        .cookie("accessToken",AcessToken,options)
-       .cookie("refershToken",RefreshToken,options)
+       .cookie("refreshToken",RefreshToken,options)
        .json(new ApiResponse(200,{loggedUser,RefreshToken},"user is logged In sucessfully")
        )
     })
@@ -118,6 +118,96 @@ const loginUser = asyncHandler( async (req,res)=>{
         return res.
         status(200)
         .clearCookie("accessToken",options)
+        .clearCookie("refreshToken",options)
         .json(new ApiResponse(200,"user suceesssfully logged out"))
     })
-export {registerUser,loginUser,loggedOutUser};
+
+    const refershAccessToken   = asyncHandler(async (req,res) =>{
+        try {
+            const incomingRefresh = req.cookies?.refreshToken || req.body?.refreshToken;
+            if(!incomingRefresh) throw new ApiError(401,"unauthorized request");
+    
+            const decodedToken = jwt.verify(incomingRefresh,process.env.REFRESH_TOKEN_SECRET);
+    
+            const user = await User.findById(decodedToken)
+    
+            if(!user) throw new ApiError(401,"Invalid request Token");
+    
+            if(incomingRefresh !== user?.refreshToken) throw new ApiError(401 , "Refresh token is expired");
+    
+            const options  = {
+                httpsOnly:true,
+                secure: true,
+            }
+            
+            const {AcessToken,RefreshToken}  = await generateAccessAndRefreshTokens(user._id);
+            
+            return res.status(200)
+           .cookie("accessToken",AcessToken,options)
+           .cookie("refreshToken",RefreshToken,options)
+           .json(new ApiResponse(200,{loggedUser,RefreshToken},"Token is refershed succesfully")
+           )
+        } catch (error) {
+            throw new ApiError(401,error?.message || "Invalid refresh token")
+        }
+
+    })
+
+    const changePassword = asyncHandler(async (req,res)=>{
+        const {oldpassword,newpassword,confPassword} = req.body;
+
+        if(newpassword !== confPassword) throw new ApiError(401,"conform Password is not matched with new Password")
+        const user = await User.findById(req.user?._id);
+
+        if(!user) throw new ApiError(401,"user is not logged in")
+        
+        const isPasswordCorrect = await user.isPasswordCorrect(oldpassword)
+        if(!isPasswordCorrect) throw new ApiError(401,"old password is not correct");
+
+        user.password = newpassword;
+        await user.save({validateBeforeSave:false});
+
+        return res.status(200)
+        .json(new ApiResponse(200,"PasswordChange successfully"));
+    })
+
+    const getcurrentUser = asyncHandler(async (req,res)=>{
+        const user  = req.user;
+        if(!user) throw  new ApiError(401,"no current user exist");
+
+        const currentUser = User.findById(user._id);
+        
+        if(!currentUser) new ApiError(401,"no current user exist");
+
+        return res.status(201)
+        .json(new ApiResponse(201,currentUser,"Current User is fetched successfuly"));
+    })
+
+    const updateAccount = asyncHandler(async (req,res) =>{
+            const {fullName,email}  = req.body;
+
+            const user = req.user;
+
+            if(!user) new ApiError(500,"something went wrong");
+
+            const coverImage  = req.files?.coverImage[0].path;
+            const avatar  = req.files?.avatar[0].path;
+
+            const update = User.findByIdAndUpdate(
+                user._id,
+                {
+                    $set:{
+                        ...(fullName && { fullName }),
+                        ...(email && { email }),
+                        ...(coverImage && { coverImage }),
+                        ...(avatar && { avatar }),
+                    },
+                },
+                {new : true}
+            )
+            user.save();
+
+            return res.status(201)
+            .json(new ApiResponse(201,"Update Account Successfully"));
+    })
+export {registerUser,loginUser,loggedOutUser,refershAccessToken,changePassword,getcurrentUser,updateAccount};
