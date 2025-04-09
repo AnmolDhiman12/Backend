@@ -9,7 +9,7 @@ cloudinary.config({
 
 const uploadOnChoudinary = async (localFilePath) =>{
     try {
-        if(!loacalFilePath){
+        if(!localFilePath){
             console.error("Path could not find");
             process.exit(1);
         }
@@ -18,9 +18,11 @@ const uploadOnChoudinary = async (localFilePath) =>{
         })
         // file uploaded successfully
         console.log(`File is  uploaded  succesfully ${response}`);
-        response.url();
+        return response;
     } catch (error) {
         fs.unlinkSync(localFilePath) // remove the locally temp saved file
         console.error("File  uploaded failed ",error);
     }
 }
+
+export {uploadOnChoudinary};
