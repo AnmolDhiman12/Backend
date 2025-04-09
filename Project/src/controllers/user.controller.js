@@ -78,7 +78,7 @@ const loginUser = asyncHandler( async (req,res)=>{
        if(!username || !email) throw new ApiError(400,"username and password are requiired");
 
        const user =  await  User.findOne({
-        $or: [{username} || {email}];
+        $or: [{username} || {email}]
        })
 
        if(!user) throw new ApiError(400, "user does not  exist");
@@ -101,5 +101,23 @@ const loginUser = asyncHandler( async (req,res)=>{
        .cookie("refershToken",RefreshToken,options)
        .json(new ApiResponse(200,{loggedUser,RefreshToken},"user is logged In sucessfully")
        )
-}) 
-export {registerUser,loginUser};
+    })
+    const loggedOutUser = asyncHandler(async (req,res)=>{
+        await User.findByIdAndUpdate(
+            req.user._id,
+            {
+                $set:{
+                    refreshToken :undefined
+                }
+            }
+        )
+        const options= {
+            httpOnly : true,
+            secure : true,
+        }
+        return res.
+        status(200)
+        .clearCookie("accessToken",options)
+        .json(new ApiResponse(200,"user suceesssfully logged out"))
+    })
+export {registerUser,loginUser,loggedOutUser};
